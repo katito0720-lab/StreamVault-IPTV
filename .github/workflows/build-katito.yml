@@ -1,0 +1,60 @@
+name: Build Katito APK
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Rebrand to Katito
+        shell: bash
+        run: |
+          set -e
+          # App name everywhere in the UI (all languages)
+          find . -path ./.git -prune -o -name "strings.xml" -path "*/src/main/res/*" -print0 | xargs -0 sed -i 's/StreamVault/Katito/g'
+          # Keep the credit the license requires
+          sed -i 's|<string name="settings_build_desc">Katito for Android TV</string>|<string name="settings_build_desc">Katito for Android TV — based on StreamVault by David Nashash (Davidona)</string>|' feature/settings/src/main/res/values/strings.xml
+          find feature/settings/src/main/res -name strings.xml -path "*values-*" -print0 | xargs -0 sed -i -E 's|(<string name="settings_build_desc">[^<]*)</string>|\1 — based on StreamVault</string>|'
+          # Hard-coded text in code
+          sed -i "s/\"StreamVault couldn.t open your library\"/\"Katito couldn't open your library\"/" app/src/main/java/com/streamvault/app/MainActivity.kt
+          sed -i 's/"StreamVault \${releaseInfo.versionName}"/"Katito ${releaseInfo.versionName}"/; s/Downloading the latest StreamVault update/Downloading the latest Katito update/; s/"StreamVault-\$sanitizedVersion.apk"/"Katito-$sanitizedVersion.apk"/' app/src/main/java/com/streamvault/app/update/AppUpdateInstaller.kt
+          sed -i 's|"/StreamVault/"|"/Katito/"|g; s/Share StreamVault backup/Share Katito backup/' app/src/main/java/com/streamvault/app/backup/BackupFileBridge.kt
+          sed -i 's/Share StreamVault crash report/Share Katito crash report/' app/src/main/java/com/streamvault/app/diagnostics/CrashReportStore.kt
+          sed -i 's/DEFAULT_TITLE = "StreamVault"/DEFAULT_TITLE = "Katito"/' feature/playback/src/main/java/com/streamvault/feature/playback/cast/CastMediaRequestFactory.kt
+          sed -i 's/URL. StreamVault will download/URL. Katito will download/' feature/system/src/main/java/com/streamvault/feature/system/presentation/plugins/PluginsScreen.kt
+          sed -i 's/Allow installs from StreamVault, then/Allow installs from Katito, then/' app/src/main/java/com/streamvault/app/plugins/StreamVaultPluginManager.kt
+          # Own package ID so it installs as its own app
+          sed -i 's/applicationId = "com.streamvault.app"/applicationId = "com.katito.app"/' app/build.gradle.kts
+          # Don't auto-check the original StreamVault releases
+          sed -i 's/preferences\[PreferencesKeys.AUTO_CHECK_APP_UPDATES\] ?: true/preferences[PreferencesKeys.AUTO_CHECK_APP_UPDATES] ?: false/' data/src/main/java/com/streamvault/data/preferences/PreferencesRepository.kt
+          grep -q '<string name="app_name">Katito</string>' app/src/main/res/values/strings.xml
+          grep -q 'applicationId = "com.katito.app"' app/build.gradle.kts
+          echo "Rebrand applied."
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: temurin
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build APK
+        run: |
+          chmod +x gradlew
+          ./gradlew --console=plain :app:assembleDebug
+
+      - name: Rename APK
+        run: |
+          mkdir -p out
+          cp "$(find app/build/outputs/apk/debug -name '*.apk' | head -n 1)" out/Katito.apk
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Katito-apk
+          path: out/Katito.apk
