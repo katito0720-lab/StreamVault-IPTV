@@ -115,15 +115,33 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Build APK
+      - name: Set up signing key
+        env:
+          KATITO_KEYSTORE_BASE64: ${{ secrets.KATITO_KEYSTORE_BASE64 }}
+          KATITO_KEYSTORE_PASSWORD: ${{ secrets.KATITO_KEYSTORE_PASSWORD }}
+        run: |
+          if [ -z "$KATITO_KEYSTORE_BASE64" ] || [ -z "$KATITO_KEYSTORE_PASSWORD" ]; then
+            echo "::error::Signing secrets KATITO_KEYSTORE_BASE64 and KATITO_KEYSTORE_PASSWORD are missing. Add them in Settings > Secrets and variables > Actions."
+            exit 1
+          fi
+          mkdir -p keystore
+          echo "$KATITO_KEYSTORE_BASE64" | tr -d ' \n\r' | base64 --decode > keystore/katito.jks
+          printf '%s\n' \
+            'storeFile=keystore/katito.jks' \
+            "storePassword=$KATITO_KEYSTORE_PASSWORD" \
+            'keyAlias=katito' \
+            "keyPassword=$KATITO_KEYSTORE_PASSWORD" > keystore.properties
+
+      - name: Build optimized release APK
         run: |
           chmod +x gradlew
-          ./gradlew --console=plain :app:assembleDebug
+          ./gradlew --console=plain :app:assembleRelease
 
       - name: Rename APK
         run: |
           mkdir -p out
-          cp "$(find app/build/outputs/apk/debug -name '*.apk' | head -n 1)" out/Katito.apk
+          cp "$(find app/build/outputs/apk/release -name '*.apk' | head -n 1)" out/Katito.apk
+          ls -lh out/Katito.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
